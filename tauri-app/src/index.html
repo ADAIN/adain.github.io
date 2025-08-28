@@ -124,6 +124,13 @@
       if (mainTimer || breakTimer) return;
       document.getElementById('start').disabled = true;
       document.getElementById('stop').disabled = false;
+      
+      // 시작음 랜덤 재생
+      const startSound = Math.random() < 0.5 ? 'start01.mp3' : 'start02.mp3';
+      const startAudio = new Audio(startSound);
+      startAudio.volume = currentVolume;
+      startAudio.play().catch(console.warn);
+      
       scheduleNext();
     });
 
