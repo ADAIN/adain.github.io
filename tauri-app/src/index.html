@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>알람 타이머</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; max-width: 500px; margin: auto; }
+    h1 { text-align: center; }
+    .controls { margin-top: 1rem; }
+    .controls > * { margin-right: 1rem; }
+    fieldset { margin-bottom: 1rem; }
+    label.volume { display: block; margin-bottom: 1rem; }
+    #timer-display { font-size: 2rem; text-align: center; margin-top: 1rem; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>알람 타이머</h1>
+
+  <fieldset>
+    <legend>간격 선택</legend>
+    <label><input type="radio" name="interval" value="60" id="opt-hour" /> 1시간</label>
+    <label><input type="radio" name="interval" value="30" id="opt-30min" /> 30분</label>
+  </fieldset>
+
+  <label class="volume">
+    볼륨: <input type="range" id="volume" min="0" max="1" step="0.01" />
+  </label>
+
+  <div id="timer-display">00:00:00</div>
+
+  <div class="controls">
+    <button id="start">시작</button>
+    <button id="stop" disabled>종료</button>
+  </div>
+
+  <script>
+    let mainTimer = null;
+    let breakTimer = null;
+    let displayTimer = null;
+    let nextTriggerTime = null;
+    const finishAudio = new Audio('finish.mp3');
+
+    const STORAGE_KEY = 'selectedInterval';
+    const VOLUME_KEY = 'alarmVolume';
+    let currentVolume = 1;
+
+    function loadSelection() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === '30' || saved === '60') {
+        document.getElementById(saved === '60' ? 'opt-hour' : 'opt-30min').checked = true;
+      } else {
+        document.getElementById('opt-hour').checked = true;
+      }
+    }
+
+    function loadVolume() {
+      const v = localStorage.getItem(VOLUME_KEY);
+      if (v !== null) currentVolume = parseFloat(v);
+      document.getElementById('volume').value = currentVolume;
+      finishAudio.volume = currentVolume;
+    }
+
+    document.querySelectorAll('input[name="interval"]').forEach(radio => {
+      radio.addEventListener('change', e => {
+        localStorage.setItem(STORAGE_KEY, e.target.value);
+      });
+    });
+
+    document.getElementById('volume').addEventListener('input', e => {
+      currentVolume = parseFloat(e.target.value);
+      localStorage.setItem(VOLUME_KEY, currentVolume);
+      finishAudio.volume = currentVolume;
+    });
+
+    function getIntervalMinutes() {
+      const sel = document.querySelector('input[name="interval"]:checked');
+      return sel ? parseInt(sel.value, 10) : 60;
+    }
+
+    function formatTime(ms) {
+      if (ms < 0) ms = 0;
+      const totalSec = Math.floor(ms / 1000);
+      const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+      const s = String(totalSec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    function updateDisplay() {
+      const diff = nextTriggerTime - Date.now();
+      document.getElementById('timer-display').textContent = formatTime(diff);
+    }
+
+    function playMainAudio() {
+      const minutes = getIntervalMinutes();
+      const src = minutes === 60 ? '1hour.mp3' : '30min.mp3';
+      const audio = new Audio(src);
+      audio.volume = currentVolume;
+      audio.play().catch(console.warn);
+    }
+
+    function scheduleNext() {
+      const intervalMs = getIntervalMinutes() * 60 * 1000;
+      nextTriggerTime = Date.now() + intervalMs;
+      if (displayTimer) clearInterval(displayTimer);
+      updateDisplay();
+      displayTimer = setInterval(updateDisplay, 1000);
+
+      mainTimer = setTimeout(() => {
+        playMainAudio();
+        // 휴식 1분
+        nextTriggerTime = Date.now() + 1 * 60 * 1000;
+        updateDisplay();
+        breakTimer = setTimeout(() => {
+          finishAudio.play().catch(console.warn);
+          scheduleNext();
+        }, 1 * 60 * 1000);
+      }, intervalMs);
+    }
+
+    document.getElementById('start').addEventListener('click', () => {
+      if (mainTimer || breakTimer) return;
+      document.getElementById('start').disabled = true;
+      document.getElementById('stop').disabled = false;
+      scheduleNext();
+    });
+
+    document.getElementById('stop').addEventListener('click', () => {
+      clearTimeout(mainTimer);
+      clearTimeout(breakTimer);
+      clearInterval(displayTimer);
+      mainTimer = breakTimer = displayTimer = null;
+      document.getElementById('timer-display').textContent = '00:00:00';
+      document.getElementById('start').disabled = false;
+      document.getElementById('stop').disabled = true;
+    });
+
+    window.addEventListener('load', () => {
+      loadSelection();
+      loadVolume();
+    });
+  </script>
+</body>
+</html>
