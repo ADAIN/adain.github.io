@@ -11,8 +11,10 @@
     "windows": [
       {
         "title": "알람 타이머",
+        "label": "main",
         "width": 600,
-        "height": 500
+        "height": 500,
+        "skipTaskbar": false
       }
     ],
     "security": {
@@ -21,13 +23,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    },
+    "publisher": "Sungyong Jang",
+    "shortDescription": "허리 건강을 위한 알람 타이머",
+    "longDescription": "정기적인 스트레칭 알람으로 허리 건강을 지키는 타이머 앱"
   }
 }
