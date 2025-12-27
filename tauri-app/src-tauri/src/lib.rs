@@ -6,16 +6,15 @@ use tauri::{
 
 #[tauri::command]
 async fn set_autostart(_app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
-    use std::process::Command;
-    
     // 현재 실행 파일 경로 가져오기
     let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
-    let exe_path_str = exe_path.to_string_lossy().to_string();
     
     if enabled {
         // 레지스트리에 시작 프로그램 등록
         #[cfg(target_os = "windows")]
         {
+            use std::process::Command;
+            let exe_path_str = exe_path.to_string_lossy().to_string();
             let output = Command::new("reg")
                 .args(&[
                     "add",
@@ -35,10 +34,27 @@ async fn set_autostart(_app: tauri::AppHandle, enabled: bool) -> Result<(), Stri
                 return Err("Failed to add to startup".to_string());
             }
         }
+        #[cfg(target_os = "linux")]
+        {
+            use std::fs;
+
+            let autostart_path = linux_autostart_path()?;
+            if let Some(parent) = autostart_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+
+            let desktop_entry = format!(
+                "[Desktop Entry]\nType=Application\nName=알람 타이머\nExec=\"{}\" --autostart\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+                exe_path.to_string_lossy()
+            );
+
+            fs::write(&autostart_path, desktop_entry).map_err(|e| e.to_string())?;
+        }
     } else {
         // 레지스트리에서 시작 프로그램 제거
         #[cfg(target_os = "windows")]
         {
+            use std::process::Command;
             let _ = Command::new("reg")
                 .args(&[
                     "delete",
@@ -48,6 +64,11 @@ async fn set_autostart(_app: tauri::AppHandle, enabled: bool) -> Result<(), Stri
                     "/f"
                 ])
                 .output();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let autostart_path = linux_autostart_path()?;
+            let _ = std::fs::remove_file(autostart_path);
         }
     }
     
@@ -72,11 +93,29 @@ async fn get_autostart(_app: tauri::AppHandle) -> Result<bool, String> {
             
         Ok(output.status.success())
     }
-    
-    #[cfg(not(target_os = "windows"))]
+
+    #[cfg(target_os = "linux")]
+    {
+        let autostart_path = linux_autostart_path()?;
+        Ok(autostart_path.exists())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
         Ok(false)
     }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_autostart_path() -> Result<std::path::PathBuf, String> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".config"))
+        })
+        .ok_or_else(|| "Unable to resolve config directory".to_string())?;
+
+    Ok(base.join("autostart").join("alarm-timer.desktop"))
 }
 
 fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {

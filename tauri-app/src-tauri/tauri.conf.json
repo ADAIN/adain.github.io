@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "알람 타이머",
+  "productName": "alarm-timer",
   "version": "0.1.0",
   "identifier": "com.sungyongjang.tauri-app",
   "build": {
