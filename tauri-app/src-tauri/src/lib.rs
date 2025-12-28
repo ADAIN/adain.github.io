@@ -1,6 +1,7 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    path::BaseDirectory,
     Manager, Runtime,
 };
 
@@ -118,6 +119,67 @@ fn linux_autostart_path() -> Result<std::path::PathBuf, String> {
     Ok(base.join("autostart").join("alarm-timer.desktop"))
 }
 
+#[tauri::command]
+async fn play_sound(app: tauri::AppHandle, name: String, volume: Option<f32>) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+
+        let mut candidates = Vec::new();
+        if let Ok(base) = app.path().resource_dir() {
+            candidates.push(base.join(&name));
+            candidates.push(base.join("_up_").join("src").join(&name));
+            candidates.push(base.join("src").join(&name));
+        }
+
+        if let Ok(resolved) = app.path().resolve(&name, BaseDirectory::Resource) {
+            candidates.push(resolved);
+        }
+
+        let pkg_name = app.package_info().name.clone();
+        candidates.push(
+            std::path::PathBuf::from("/usr/lib")
+                .join(&pkg_name)
+                .join("_up_")
+                .join("src")
+                .join(&name),
+        );
+        candidates.push(
+            std::path::PathBuf::from("/usr/lib")
+                .join(&pkg_name)
+                .join("resources")
+                .join(&name),
+        );
+
+        let resolved = candidates
+            .into_iter()
+            .find(|path| path.exists())
+            .ok_or_else(|| format!("audio resource not found: {}", name))?;
+
+        let vol = volume.unwrap_or(1.0).clamp(0.0, 1.0);
+        let status = Command::new("gst-play-1.0")
+            .arg("--no-interactive")
+            .arg("--audiosink")
+            .arg("pulsesink")
+            .arg("--volume")
+            .arg(vol.to_string())
+            .arg(resolved)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+
+        let _ = status;
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        let _ = name;
+        let _ = volume;
+        Ok(())
+    }
+}
+
 fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     let quit_i = MenuItemBuilder::with_id("quit", "종료").build(app)?;
     let show_i = MenuItemBuilder::with_id("show", "창 보이기").build(app)?;
@@ -171,7 +233,11 @@ fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![set_autostart, get_autostart])
+        .invoke_handler(tauri::generate_handler![
+            set_autostart,
+            get_autostart,
+            play_sound
+        ])
         .setup(|app| {
             // 트레이 아이콘 생성
             create_tray(app.handle())?;

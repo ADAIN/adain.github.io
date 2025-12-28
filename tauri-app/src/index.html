@@ -44,11 +44,11 @@
     let breakTimer = null;
     let displayTimer = null;
     let nextTriggerTime = null;
-    const finishAudio = new Audio('finish.mp3');
-
     const STORAGE_KEY = 'selectedInterval';
     const VOLUME_KEY = 'alarmVolume';
     let currentVolume = 1;
+    const isLinux = /Linux/i.test(navigator.userAgent || '');
+    let audioErrorShown = false;
 
     function loadSelection() {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -63,7 +63,6 @@
       const v = localStorage.getItem(VOLUME_KEY);
       if (v !== null) currentVolume = parseFloat(v);
       document.getElementById('volume').value = currentVolume;
-      finishAudio.volume = currentVolume;
     }
 
     document.querySelectorAll('input[name="interval"]').forEach(radio => {
@@ -75,7 +74,6 @@
     document.getElementById('volume').addEventListener('input', e => {
       currentVolume = parseFloat(e.target.value);
       localStorage.setItem(VOLUME_KEY, currentVolume);
-      finishAudio.volume = currentVolume;
     });
 
     function getIntervalMinutes() {
@@ -97,12 +95,36 @@
       document.getElementById('timer-display').textContent = formatTime(diff);
     }
 
-    function playMainAudio() {
-      const minutes = getIntervalMinutes();
-      const src = minutes === 60 ? '1hour.mp3' : '30min.mp3';
+    function playSound(src) {
+      if (isLinux) {
+        try {
+          const { invoke } = window.__TAURI__.core;
+          invoke('play_sound', { name: src, volume: currentVolume }).catch(err => {
+            console.warn(err);
+            if (!audioErrorShown) {
+              audioErrorShown = true;
+              alert(`리눅스에서 소리 재생에 실패했습니다: ${String(err)}`);
+            }
+          });
+        } catch (err) {
+          console.warn(err);
+          if (!audioErrorShown) {
+            audioErrorShown = true;
+            alert('리눅스에서 소리 재생에 실패했습니다. 설치 파일에 오디오 리소스가 포함되어 있는지 확인해주세요.');
+          }
+        }
+        return;
+      }
+
       const audio = new Audio(src);
       audio.volume = currentVolume;
       audio.play().catch(console.warn);
+    }
+
+    function playMainAudio() {
+      const minutes = getIntervalMinutes();
+      const src = minutes === 60 ? '1hour.mp3' : '30min.mp3';
+      playSound(src);
     }
 
     function scheduleNext() {
@@ -118,7 +140,7 @@
         nextTriggerTime = Date.now() + 1 * 60 * 1000;
         updateDisplay();
         breakTimer = setTimeout(() => {
-          finishAudio.play().catch(console.warn);
+          playSound('finish.mp3');
           scheduleNext();
         }, 1 * 60 * 1000);
       }, intervalMs);
@@ -131,9 +153,7 @@
       
       // 시작음 랜덤 재생
       const startSound = Math.random() < 0.5 ? 'start01.mp3' : 'start02.mp3';
-      const startAudio = new Audio(startSound);
-      startAudio.volume = currentVolume;
-      startAudio.play().catch(console.warn);
+      playSound(startSound);
       
       scheduleNext();
     });
